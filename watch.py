@@ -1,13 +1,7 @@
-import time, argparse, os
+import argparse, os, select
 import psycopg2
-from dataclasses import dataclass
+from psycopg2.extensions import cursor
 from dotenv import load_dotenv
-
-@dataclass
-class Database:
-    name: str
-    user: str
-    pw: str
 
 def get_parser():
     parser = argparse.ArgumentParser
@@ -23,42 +17,35 @@ def follow(filepath: str):
     with open(filepath, "r") as f:
         f.seek(0, 2)
         while True:
-            line = f.readline()
-            if not line:
-                time.sleep(0.5)
-                continue
-            yield line.strip()
+            rlist, _, _ = select.select([f], [], [], 1.0)
+            if rlist:
+                for line in f:
+                    yield line.strip()
 
-def make_db(db: Database):
-    with psycopg2.connect(
-        dbname=db.name,
-        user=db.user,
-        password=db.pw
-        ) as conn:
-        cur = conn.cursor()
-        cur.execute()
+def make_table(cur: cursor ):
+    cur.execute("""
+            CREATE TABLE IF NOT EXISTS logs (
+            id SERIAL PRIMARY KEY,
+            line TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT NOW()
+        )
+    """)
 
-# this should return something, handle errors, and do logging
-def write_to_db(line: str, db: Database) -> bool:
-    with psycopg2.connect(
-        dbname=db.name,
-        user=db.user,
-        password=db.pw
-        ) as conn:
-        cur = conn.cursor()
-        cur.execute()
+def write_to_db(cur: cursor):
+    cur.execute("INSERT INTO logs (line) VALUES (%s)", (line,))
 
 if __name__ == "__main__":
     load_dotenv()
-    db = Database(
-        name = os.getenv('DATABASE_NAME')
-        user = os.getenv('DATABASE_USER')
-        pw = os.getenv('DATABASE_PASSWORD')
-        )
-    
-
     parser = get_parser()
     args = parser.parse_args()
-    for line in follow(args.file):
-        if line:
-            print(f"New line: {line}")
+    with psycopg2.connect(
+        dbname=os.getenv('DATABASE_NAME'),
+        user=os.getenv('DATABASE_USER'),
+        password=os.getenv('DATABASE_PASSWORD')
+        ) as conn:
+        conn.autocommit = True
+        cur = conn.cursor()
+        make_table(cur)
+        for line in follow(args.file):
+            if line:
+                write_to_db(line=line, cur=cur)
