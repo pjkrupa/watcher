@@ -18,10 +18,10 @@ def get_parser():
 def get_file_list(path:str) -> List[str]:
     
     # this is for Nginx logs:
-    #files = [x for x in os.listdir(path=path) if fnmatch.fnmatch(x, "access.*.gz")]
+    files = [x for x in os.listdir(path=path) if fnmatch.fnmatch(x, "access.*.gz")]
     
     # this is for testing:
-    files = [x for x in os.listdir(path=path) if fnmatch.fnmatch(x, "*.gz")]
+    #files = [x for x in os.listdir(path=path) if fnmatch.fnmatch(x, "*.gz")]
     return files
 
 # extracts a file, saves it to a temp folder, returns num of lines
@@ -88,5 +88,5 @@ if __name__ == "__main__":
     print(f"cleaning up temp folder...")
     shutil.rmtree("temp")
     r_count = checker(cur)
-    print(f"A total of {r_count} records added to the database.")
+    print(f"A total of {r_count} records in the database.")
 

@@ -1,4 +1,4 @@
-import argparse, os, select
+import argparse, os, time
 import psycopg2
 from psycopg2.extensions import cursor
 from dotenv import load_dotenv
@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 def get_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "f",
+        "-f",
         "--file",
         help="path of the file to monitor"
     )
@@ -16,11 +16,25 @@ def get_parser():
 def follow(filepath: str):
     with open(filepath, "r") as f:
         f.seek(0, 2)
+        ino = os.fstat(f.fileno()).st_ino
         while True:
-            rlist, _, _ = select.select([f], [], [], 1.0)
-            if rlist:
-                for line in f:
-                    yield line.strip()
+            lines = f.readlines()
+            if lines:
+                yield from (line.strip() for line in lines if line.strip())
+            else:
+                time.sleep(10)
+                try:
+                    # if inode changed, reopen the file
+                    if os.stat(filepath).st_ino != ino:
+                        f.close()
+                        f = open(filepath, "r")
+                        ino = os.fstat(f.fileno()).st_ino
+                        print("Detected log rotation, reopening file...")
+                except FileNotFoundError:
+                    # file temporarily missing during rotation
+                    time.sleep(10)
+
+
 
 def make_table(cur: cursor ):
     cur.execute("""
@@ -33,6 +47,7 @@ def make_table(cur: cursor ):
 
 def write_to_db(cur: cursor, line: str):
     cur.execute("INSERT INTO logs (line) VALUES (%s)", (line,))
+    print(f'wrote "{line}" to the database')
 
 def db_connect():
     with psycopg2.connect(
